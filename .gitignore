@@ -1,0 +1,57 @@
+# ===================== 通用 =====================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===================== STM32CubeMX =====================
+# CubeMX 生成的状态缓存文件（重新生成即可，无需纳入版本库）
+.mxproject
+
+# ===================== Keil MDK-ARM =====================
+# 用户 GUI 布局（因人而异）
+*.uvguix.*
+uvguix
+
+# 工程选项缓存（不同电脑/用户可能不同，建议忽略，保留 *.uvprojx）
+*.uvoptx
+*.uvopt
+*.scvd
+DebugConfig/
+
+# 构建产物
+MDK-ARM/Objects/
+MDK-ARM/Listings/
+RTE/
+*.dep
+*.d
+
+# 编译/链接输出文件
+*.o
+*.axf
+*.hex
+*.bin
+*.sct
+*.map
+*.lst
+*.crf
+*.htm
+*.build_log.htm
+*.lnp
+*.bak
+
+# 调试中间文件
+*.dbg
+*.ini
+JLinkLog.txt
