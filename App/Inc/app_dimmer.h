@@ -33,13 +33,13 @@
   *
   * ============================== 底层输出时序 ===============================
   * 本模块用 HAL_GPIO_WritePin() 逐路输出(可移植、可读性好)。
-  * 需要在 STM32CubeMX 中新增一个基本定时器(如 TIM6)并开启更新中断：
-  *      - 时钟源 Internal Clock；
-  *      - 更新中断频率 f_isr = PWM频率 x DIMMER_PWM_N
-  *        例：PWM=60Hz、N=128 -> f_isr=7.68kHz；N=64 -> 3.84kHz；
-  *      - NVIC 优先级建议低于(数字大于) configMAX_SYSCALL_INTERRUPT_PRIORITY
-  *        对应的 5，保证不与 FreeRTOS 冲突；中断内不调用任何 RTOS API。
-  * 在该定时器的中断服务函数(USER CODE 区)中调用 app_dimmer_tick_isr()。
+  * 驱动定时器：TIM1(已在 CubeMX 配置)，更新中断每 1ms 触发一次(1kHz)，
+  * 作为软件 PWM 的 1 个 tick。由它周期调用 app_dimmer_tick_isr()：
+  *      - PWM频率 = 1000/DIMMER_PWM_N Hz  (N=16 -> 62.5Hz)
+  *      - 一个 PWM 周期 = DIMMER_PWM_N 个 tick = N ms
+  * 接入位置：main.c 的 HAL_TIM_PeriodElapsedCallback(USER CODE)中对 htim1
+  * 调用 app_dimmer_tick_isr()，并在主初始化时 HAL_TIM_Base_Start_IT(&htim1)。
+  *      - NVIC 优先级 = 5，中断内不调用任何 RTOS API。
   *
   * @note GPIO 为 0~3.3V 单极性，PDLC 需高压交流差分驱动：区域压差
   *       (Xc - Yr) 经外部驱动电路放大后施加到玻璃两端；两路同相->压差 0->不透明。
@@ -61,10 +61,10 @@ extern "C" {
 #define DIMMER_CH_NUM     (DIMMER_ROW_NUM + DIMMER_COL_NUM)   /* 22 */
 
 /* ------------------------- 软 PWM 参数 ----------------------- */
-/* 每 PWM 周期 tick 分辨率。需为偶数；4 的倍数或 2 的幂最佳。
-   电平差占比(透光率)步进 = 2/N，相位分辨率 = 1 tick。 */
+/* 每 PWM 周期 tick 分辨率(整数个 TIM1 的 1ms tick)。需为偶数。
+   PWM频率 = 1000/N Hz；透光率(电平差占比)步进 = 2/N。       */
 #ifndef DIMMER_PWM_N
-#define DIMMER_PWM_N      128u
+#define DIMMER_PWM_N      16u     /* -> 62.5Hz(最接近 60Hz 防闪烁目标)；想更细腻可加大 */
 #endif
 
 /* 透光率满量程(千分比：0 ~ 1000，对应 0.0% ~ 100.0%) */

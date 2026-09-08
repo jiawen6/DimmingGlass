@@ -20,12 +20,14 @@
 #include "main.h"
 #include "cmsis_os.h"
 #include "dma.h"
+#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "app_dimmer.h"
+#include "tim.h"   /* htim1：行/列调光 1ms tick 定时器 */
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -94,9 +96,13 @@ int main(void)
   MX_GPIO_Init();
   MX_USART3_UART_Init();
   MX_DMA_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-  /* 调光模块初始化：所有电极同相 -> 整屏关闭 */
+  /* 调光模块初始化：�?有电极同�? -> 整屏关闭 */
   app_dimmer_init();
+
+  /* 启动 TIM1：每 1ms 触发软件 PWM 一个 tick(PWM=1000/16 ≈ 62.5Hz) */
+  HAL_TIM_Base_Start_IT(&htim1);
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -226,7 +232,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-
+  if (htim->Instance == TIM1) {
+    /* 软件 PWM：TIM1 每 1ms 推进一个 tick，刷新 22 路 GPIO */
+    app_dimmer_tick_isr();
+  }
   /* USER CODE END Callback 1 */
 }
 
