@@ -2,11 +2,12 @@
 #define TOUCH_PARSER_H
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdbool.h>
 
 // 厂商支持配置（编译期可选）
-#define SUPPORT_VENDOR_A  1
-#define SUPPORT_VENDOR_B  1
+#define SUPPORT_VENDOR_NUOFEI  1
+// #define SUPPORT_VENDOR_HUAKE  1
 
 // 最大帧长度（根据实际最大帧调整，例如 B 厂 12*10+7=127 字节，可设 256）
 #define TOUCH_PARSER_MAX_FRAME_LEN  256

@@ -1,6 +1,9 @@
 #ifndef VENDOR_HUAKE_TOUCH_H
 #define VENDOR_HUAKE_TOUCH_H
 
+#include <stdint.h>
+
+
 #define TOUCH_MEMBRANE_Height    500
 #define TOUCH_MEMBRANE_width    1000
 
@@ -45,6 +48,8 @@ typedef struct
     touch_point_t point_1;
     touch_point_t point_2;
 } Touch_Double_t;
+
+void touch_parser_on_frame_nuofei(uint8_t *frame, uint16_t len);
 
 #endif
 

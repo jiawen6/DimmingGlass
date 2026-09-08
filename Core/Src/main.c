@@ -25,7 +25,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "app_dimmer.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -95,7 +95,8 @@ int main(void)
   MX_USART3_UART_Init();
   MX_DMA_Init();
   /* USER CODE BEGIN 2 */
-
+  /* 调光模块初始化：所有电极同相 -> 整屏关闭 */
+  app_dimmer_init();
   /* USER CODE END 2 */
 
   /* Init scheduler */

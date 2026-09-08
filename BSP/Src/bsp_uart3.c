@@ -1,4 +1,4 @@
-#include "uart_receiver.h"
+#include "bsp_uart3.h"
 #include "usart.h"    // CubeMX 生成的 USART 句柄
 #include "dma.h"      // CubeMX 生成的 DMA 句柄
 #include <string.h>

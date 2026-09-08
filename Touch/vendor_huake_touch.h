@@ -1,6 +1,9 @@
 #ifndef VENDOR_HUAKE_TOUCH_H
 #define VENDOR_HUAKE_TOUCH_H
 
+#include <stdint.h>
+
+
 #define TOUCH_MEMBRANE_H    500
 #define TOUCH_MEMBRANE_L    1000
 

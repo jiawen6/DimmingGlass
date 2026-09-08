@@ -14,6 +14,10 @@ void touch_parser_on_frame_nuofei(uint8_t *frame, uint16_t len)
         single_touch.point.x = (float)touch_x * TOUCH_MEMBRANE_width / 32767;
         single_touch.point.y = (float)touch_y * TOUCH_MEMBRANE_Height / 32767;
         single_touch.point.id = frame[5];
+
+
+
+        
     }
 
 }

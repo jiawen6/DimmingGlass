@@ -1,9 +1,21 @@
 #include "touch_parser.h"
 
+#ifdef SUPPORT_VENDOR_NUOFEI
+#include "vendor_nuofei_touch.h"
+#endif
+
+#ifdef SUPPORT_VENDOR_HUAKE
+#include "vendor_huake_touch.h"
+#endif
+
+extern volatile Touch_Single_t single_touch;
+extern volatile Touch_Double_t Double_touch;
+
 typedef enum {
     STATE_IDLE = 0,
     STATE_HEADER_A1,
     STATE_HEADER_A2,
+    STATE_HEADER_A3,
     STATE_HEADER_B1,
     STATE_RECV_A,
     STATE_RECV_B
@@ -23,6 +35,8 @@ touch_point_t point_2;
 
 static bool verify_checksum(uint8_t *buf, uint16_t len);
 void process_touch_status(touch_point_t* point);
+static bool verify_checksum(uint8_t *buf, uint16_t len);
+
 
 
 void touch_parser_init(void)
@@ -113,11 +127,11 @@ void touch_parser_feed(uint8_t byte)
         // }
         if (frame_index == expected_len) {
             if (verify_checksum(frame_buf, expected_len)) {
-                #if SUPPORT_VENDOR_A
-                touch_parser_on_frame_A(frame_buf, expected_len);
+                #if SUPPORT_VENDOR_NUOFEI
+                touch_parser_on_frame_nuofei(frame_buf, expected_len);
                 if(expected_len == 12)
                 {
-                    proces_touch_status(&single_touch.point);
+                    process_touch_status(&single_touch.point);
 
                 }
                 
@@ -140,7 +154,7 @@ void touch_parser_feed(uint8_t byte)
         }
         if (frame_index == expected_len) {
             if (verify_checksum(frame_buf, expected_len)) {
-                #if SUPPORT_VENDOR_B
+                #if SUPPORT_VENDOR_HUAKE
                 touch_parser_on_frame_B(frame_buf, expected_len);
                 #endif
             }
@@ -190,23 +204,23 @@ void process_touch_status(touch_point_t* point)
             dx = point->x - point->x_start;
             dy = point->y - point->y_start;
 
-            if(dx >= SLIDE_LENGTH)
+            if(dx >= Slide_Length)
             {
                 point->status_last = point->status;
                 point->status = TOUCH_SLIDING;
                 point->slide_dir = TOUCH_RIGHT;
             }
-            else if(dx <= (-1.0f)*SLIDE_LENGTH)
+            else if(dx <= (-1.0f)*Slide_Length)
             {
                 point->status_last = point->status;
                 point->status = TOUCH_SLIDING;
                 point->slide_dir = TOUCH_RIGHT;                
             }
-            else if(dy >= SLIDE_LENGTH)
+            else if(dy >= Slide_Length)
             {
 
             }
-            else if(dy <= (-1.0f)*SLIDE_LENGTH)
+            else if(dy <= (-1.0f)*Slide_Length)
             {
 
             }
@@ -217,6 +231,43 @@ void process_touch_status(touch_point_t* point)
                 point->y_start = point->y;                
             }
             break;
+
+        case TOUCH_SLIDING:
+            dx = point->x - point->x_start;
+            dy = point->y - point->y_start;
+
+            if(dx >= Slide_Length)
+            {
+                point->status_last = point->status;
+                point->slide_dir = TOUCH_RIGHT;
+            }
+            else if(dx <= (-1.0f)*Slide_Length)
+            {
+                point->status_last = point->status;
+                point->slide_dir = TOUCH_RIGHT;                
+            }
+            else if(dy >= Slide_Length)
+            {
+
+            }
+            else if(dy <= (-1.0f)*Slide_Length)
+            {
+
+            }
+
+            if(point->slide_dir != SLIDE_IDLE)
+            {
+                point->x_start = point->x;
+                point->y_start = point->y;                
+            }
+            break;
+
+        case TOUCH_RELEASED:
+            break;
+
+        default:
+            break;
+
     }
 
 }
