@@ -3,7 +3,7 @@
 #include "main.h"          /* X1~X15 / Y1~Y7 引脚宏 */
 #include "FreeRTOS.h"
 #include "task.h"
-
+#include "tim.h"          // 为了 htim1
 /* ============================================================================
  *  =========================== 使用方法(单行/单列调光) =======================
  *
@@ -89,8 +89,8 @@ static volatile uint16_t s_phase[DIMMER_CH_NUM];
 
 /* ====================== 内部工具 ====================== */
 /**
-  * @brief 透光率 level(0~1000) -> 相位偏移 delta(tick)。
-  *        delta = round( N * (level/1000) / 2 )
+  * @brief 透光率 level(0~100) -> 相位偏移 delta(tick)。
+  *        delta = round( N * (level/100) / 2 )
   */
 uint16_t app_dimmer_level_to_delta(uint16_t level)
 {
@@ -239,6 +239,20 @@ void app_dimmer_tick_isr(void)
         tick = 0u;
     }
 }
+
+
+
+
+// 手动重写这个弱函数
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM1)  // 判断是否是定时器1
+    {
+        app_dimmer_tick_isr();   // 调用你的应用函数
+    }
+}
+
+
 
 /* ====================== FreeRTOS 任务(可选) ====================== */
 void app_dimmer_task(void *argument)
