@@ -25,8 +25,8 @@ typedef enum
   SLIDE_IDLE,
   SLIDE_UP,
   SLIDE_DOWN,
-  TOUCH_LEFT,
-  TOUCH_RIGHT
+  SLIDE_LEFT,
+  SLIDE_RIGHT
 } SlideDirection;
 
 typedef struct {
@@ -52,6 +52,7 @@ typedef struct
 } Touch_Double_t;
 
 void touch_parser_on_frame_nuofei(uint8_t *frame, uint16_t len);
+uint16_t Get_Region(touch_point_t point);
 
 #endif
 

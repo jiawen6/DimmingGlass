@@ -9,7 +9,7 @@
 #endif
 
 extern volatile Touch_Single_t single_touch;
-extern volatile Touch_Double_t Double_touch;
+extern volatile Touch_Double_t double_touch;
 
 typedef enum {
     STATE_IDLE = 0,
@@ -29,6 +29,12 @@ static uint16_t expected_len = 0;
 static parser_state_t state = STATE_IDLE;
 static uint8_t vendor = 0;
 
+/* 触控超时自动复位：内部计时(ms) */
+static uint32_t s_last_activity_ms = 0u;   /* 最近一次有效触控帧时刻 */
+static uint32_t s_rel_ms_single = 0u;      /* 单点进入 RELEASED 的时刻 */
+static uint32_t s_rel_ms_double1 = 0u;     /* 双点1 进入 RELEASED 的时刻 */
+static uint32_t s_rel_ms_double2 = 0u;     /* 双点2 进入 RELEASED 的时刻 */
+
 
 touch_point_t point_1;
 touch_point_t point_2;
@@ -44,6 +50,10 @@ void touch_parser_init(void)
     frame_index = 0;
     expected_len = 0;
     vendor = 0;
+    s_last_activity_ms = 0u;
+    s_rel_ms_single = 0u;
+    s_rel_ms_double1 = 0u;
+    s_rel_ms_double2 = 0u;
 }
 
 uint8_t touch_parser_feed(uint8_t byte)
@@ -198,19 +208,19 @@ uint16_t Get_Touch_Gestrue(uint8_t touch_num)
                 switch(single_touch.point.slide_dir)
                 {
                     case SLIDE_UP:
-                        single_touch.point.slide_dir == SLIDE_IDLE;
+                        single_touch.point.slide_dir = SLIDE_IDLE;
                         return (region << 8) + 0x0001;
                         break;
                     case SLIDE_DOWN:
-                        single_touch.point.slide_dir == SLIDE_IDLE;
+                        single_touch.point.slide_dir = SLIDE_IDLE;
                         return (region << 8) + 0x0002;
                         break;                        
                     case SLIDE_LEFT:
-                        single_touch.point.slide_dir == SLIDE_IDLE;
+                        single_touch.point.slide_dir = SLIDE_IDLE;
                         return (region << 8) + 0x0001;
                         break;
-                    case SLIDE_DOWN:
-                        single_touch.point.slide_dir == SLIDE_IDLE;
+                    case SLIDE_RIGHT:
+                        single_touch.point.slide_dir = SLIDE_IDLE;
                         return (region << 8) + 0x0001;
                         break;
                     default:
@@ -229,28 +239,28 @@ uint16_t Get_Touch_Gestrue(uint8_t touch_num)
                 && double_touch.point_2.slide_dir == SLIDE_UP)
             {
                 double_touch.point_1.slide_dir = SLIDE_IDLE;
-                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                double_touch.point_2.slide_dir = SLIDE_IDLE;
                 return 0xAA11;
             }
             else if(double_touch.point_1.slide_dir == SLIDE_DOWN 
                 && double_touch.point_2.slide_dir == SLIDE_DOWN)
             {
                 double_touch.point_1.slide_dir = SLIDE_IDLE;
-                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                double_touch.point_2.slide_dir = SLIDE_IDLE;
                 return 0xAA22;
             }
-            else if(double_touch.point_1.slide_dir == TOUCH_LEFT 
-                && double_touch.point_2.slide_dir == TOUCH_LEFT)
+            else if(double_touch.point_1.slide_dir == SLIDE_LEFT 
+                && double_touch.point_2.slide_dir == SLIDE_LEFT)
             {
                 double_touch.point_1.slide_dir = SLIDE_IDLE;
-                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                double_touch.point_2.slide_dir = SLIDE_IDLE;
                 return 0xAA33;
             }
-            else if(double_touch.point_1.slide_dir == TOUCH_RIGHT 
-                && double_touch.point_2.slide_dir == TOUCH_RIGHT)
+            else if(double_touch.point_1.slide_dir == SLIDE_RIGHT 
+                && double_touch.point_2.slide_dir == SLIDE_RIGHT)
             {
                 double_touch.point_1.slide_dir = SLIDE_IDLE;
-                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                double_touch.point_2.slide_dir = SLIDE_IDLE;
                 return 0xAA44;
             }                        
         }
@@ -297,13 +307,13 @@ void process_touch_status(touch_point_t* point)
             {
                 point->status_last = point->status;
                 point->status = TOUCH_SLIDING;
-                point->slide_dir = TOUCH_RIGHT;
+                point->slide_dir = SLIDE_RIGHT;
             }
             else if(dx <= (-1.0f)*Slide_Length)
             {
                 point->status_last = point->status;
                 point->status = TOUCH_SLIDING;
-                point->slide_dir = TOUCH_RIGHT;                
+                point->slide_dir = SLIDE_LEFT;                
             }
             else if(dy >= Slide_Length)
             {
@@ -328,12 +338,12 @@ void process_touch_status(touch_point_t* point)
             if(dx >= Slide_Length)
             {
                 point->status_last = point->status;
-                point->slide_dir = TOUCH_RIGHT;
+                point->slide_dir = SLIDE_RIGHT;
             }
             else if(dx <= (-1.0f)*Slide_Length)
             {
                 point->status_last = point->status;
-                point->slide_dir = TOUCH_RIGHT;                
+                point->slide_dir = SLIDE_LEFT;                
             }
             else if(dy >= Slide_Length)
             {
@@ -359,5 +369,84 @@ void process_touch_status(touch_point_t* point)
 
     }
 
+}
+
+/* ====================== 触控超时自动复位 ====================== */
+/**
+  * @brief 对单个触点执行一次超时推进。
+  * @param  pt     目标触点(single / double 的某个 point)
+  * @param  rel_ms 该触点进入 RELEASED 的时刻(出参记录)
+  * @param  now_ms 当前时间(ms)
+  * @retval 1 = 本次从按压/滑动补成“抬起”；0 = 无此动作
+  */
+static uint8_t touch_timeout_step(touch_point_t *pt, uint32_t *rel_ms, uint32_t now_ms)
+{
+    uint8_t lifted = 0u;
+
+    if ((pt == NULL) || (rel_ms == NULL)) {
+        return 0u;
+    }
+
+    switch (pt->status)
+    {
+    case TOUCH_PRESSED:
+    case TOUCH_SLIDING:
+        /* 长时间无新帧：认为手指已离开，转为“释放” */
+        pt->status_last = pt->status;
+        pt->status      = TOUCH_RELEASED;
+        *rel_ms         = now_ms;
+        lifted          = 1u;
+        break;
+
+    case TOUCH_RELEASED:
+        /* “释放”已持续一个超时周期仍无新帧：回到初始态，等待下次按下 */
+        if ((now_ms - *rel_ms) >= TOUCH_STATE_TIMEOUT_MS)
+        {
+            pt->status_last = pt->status;
+            pt->status      = TOUCH_IDLE;
+            pt->slide_dir   = SLIDE_IDLE;
+            pt->x_start     = pt->x;
+            pt->y_start     = pt->y;
+        }
+        break;
+
+    case TOUCH_IDLE:          /* 空闲无需处理 */
+    default:
+        break;
+    }
+
+    return lifted;
+}
+
+/**
+  * @brief 刷新“最近一次有效触控帧”时刻。每收到一帧有效触控数据后调用。
+  * @param  now_ms 当前时间(ms)，建议 HAL_GetTick()
+  */
+void touch_parser_mark_activity(uint32_t now_ms)
+{
+    s_last_activity_ms = now_ms;
+}
+
+/**
+  * @brief 周期超时检测（建议任务里每 1ms 调用一次）。
+  *        距最近有效帧超过 TOUCH_STATE_TIMEOUT_MS 时，统一对
+  *        single_touch / double_touch 触点做状态推进。
+  * @param  now_ms 当前时间(ms)
+  * @retval 1 = 本次有触点被补成“抬起”，调用方可再查一次手势；
+  * @retval 0 = 无事件
+  */
+uint8_t touch_parser_timeout_check(uint32_t now_ms)
+{
+    uint8_t lifted;
+
+    /* 仍在持续收到新帧(手指未离开)则不动作 */
+    if ((now_ms - s_last_activity_ms) < TOUCH_STATE_TIMEOUT_MS) {
+        return 0u;
+    }
+
+    lifted  = touch_timeout_step(&single_touch.point, &s_rel_ms_single, now_ms);
+    lifted |= touch_timeout_step(&double_touch.point_1, &s_rel_ms_double1, now_ms);
+    lifted |= touch_timeout_step(&double_touch.point_2, &s_rel_ms_double2, now_ms);
+    return lifted;
 }
 

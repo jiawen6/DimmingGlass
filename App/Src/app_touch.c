@@ -46,18 +46,26 @@ void app_touch_task(void *argument)
     touch_parser_init();
     uint8_t data_result = 0;
     uint8_t Touch_Gestrue = 0;
+    uint32_t now_ms = 0u;   /* 时间基(1ms)，用于触控超时复位 */
 
     while (1) {
+        now_ms = HAL_GetTick();
+
         // 如果环形缓冲区有数据，逐个字节送入解析器
         while (uart_receiver_available() > 0) {
             uint8_t byte = uart_receiver_get_byte();
             data_result = touch_parser_feed(byte);
             if(data_result) 
             {
+                touch_parser_mark_activity(now_ms);   /* 刷新“最近有触控数据” */
                 Touch_Gestrue = Get_Touch_Gestrue();
             }
             StateMatch(Touch_Gestrue);
         }
+
+        // 超时复位：某指抬起/丢帧导致无新数据超过阈值即统一推进触点状态
+        touch_parser_timeout_check(now_ms);
+
         // 没有数据时让出 CPU
         vTaskDelay(pdMS_TO_TICKS(1));
     }
