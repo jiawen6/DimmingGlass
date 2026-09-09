@@ -64,7 +64,7 @@ extern "C" {
 /* 每 PWM 周期 tick 分辨率(整数个 TIM1 的 1ms tick)。需为偶数。
    PWM频率 = 1000/N Hz；透光率(电平差占比)步进 = 2/N。       */
 #ifndef DIMMER_PWM_N
-#define DIMMER_PWM_N      16u     /* -> 62.5Hz(最接近 60Hz 防闪烁目标)；想更细腻可加大 */
+#define DIMMER_PWM_N      100u     /* -> 62.5Hz(最接近 60Hz 防闪烁目标)；想更细腻可加大 */
 #endif
 
 /* 透光率满量程(千分比：0 ~ 1000，对应 0.0% ~ 100.0%) */

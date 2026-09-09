@@ -3,9 +3,11 @@
 
 #include <stdint.h>
 
-
-#define TOUCH_MEMBRANE_Height    500
-#define TOUCH_MEMBRANE_width    1000
+/*
+触控膜长957mm，高448mm
+*/
+#define TOUCH_MEMBRANE_Height   448
+#define TOUCH_MEMBRANE_width    957
 
 #define Slide_Length    10    
 

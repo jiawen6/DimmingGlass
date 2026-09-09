@@ -16,7 +16,9 @@
 void touch_parser_init(void);
 
 // 向解析器输入一个字节（通常在串口接收回调中调用）
-void touch_parser_feed(uint8_t byte);
+uint8_t touch_parser_feed(uint8_t byte);
+
+uint16_t Get_Touch_Gestrue(uint8_t touch_num);
 
 // 用户需要实现的回调函数（使用 __weak 声明，可在其他文件中覆盖）
 void touch_parser_on_frame_A(uint8_t *frame, uint16_t len);

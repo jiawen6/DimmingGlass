@@ -44,12 +44,19 @@ void app_touch_task(void *argument)
     // 初始化接收和解析器
     uart_receiver_init();
     touch_parser_init();
+    uint8_t data_result = 0;
+    uint8_t Touch_Gestrue = 0;
 
     while (1) {
         // 如果环形缓冲区有数据，逐个字节送入解析器
         while (uart_receiver_available() > 0) {
             uint8_t byte = uart_receiver_get_byte();
-            touch_parser_feed(byte);
+            data_result = touch_parser_feed(byte);
+            if(data_result) 
+            {
+                Touch_Gestrue = Get_Touch_Gestrue();
+            }
+            StateMatch(Touch_Gestrue);
         }
         // 没有数据时让出 CPU
         vTaskDelay(pdMS_TO_TICKS(1));

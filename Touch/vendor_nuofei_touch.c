@@ -23,3 +23,29 @@ void touch_parser_on_frame_nuofei(uint8_t *frame, uint16_t len)
 }
 
 
+uint16_t Get_Region(touch_point_t point)
+{
+    uint8_t region_x = point.x % (957.0f/15.0f) + 1;
+    if(region_x > 15) region_x = 15;
+
+    uint8_t region_y = point.y % (448.0f/7.0f) + 1;
+    if(region_y > 15) region_y = 7;
+
+    return region_x << 8 + region_y;
+}
+
+uint8_t Get_Region_x(touch_point_t point)
+{
+    uint8_t region_x = point.x % (957.0f/15.0f) + 1;
+    if(region_x > 15) region_x = 15;
+
+    return region_x;
+}
+
+uint8_t Get_Region_y(touch_point_t point)
+{
+    uint8_t region_y = point.y % (448.0f/7.0f) + 1;
+    if(region_y > 15) region_y = 7;
+
+    return region_y;
+}

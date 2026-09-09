@@ -35,7 +35,6 @@ touch_point_t point_2;
 
 static bool verify_checksum(uint8_t *buf, uint16_t len);
 void process_touch_status(touch_point_t* point);
-static bool verify_checksum(uint8_t *buf, uint16_t len);
 
 
 
@@ -47,7 +46,7 @@ void touch_parser_init(void)
     vendor = 0;
 }
 
-void touch_parser_feed(uint8_t byte)
+uint8_t touch_parser_feed(uint8_t byte)
 {
     switch (state) {
     case STATE_IDLE:
@@ -128,13 +127,18 @@ void touch_parser_feed(uint8_t byte)
         if (frame_index == expected_len) {
             if (verify_checksum(frame_buf, expected_len)) {
                 #if SUPPORT_VENDOR_NUOFEI
-                touch_parser_on_frame_nuofei(frame_buf, expected_len);
-                if(expected_len == 12)
-                {
-                    process_touch_status(&single_touch.point);
-
-                }
-                
+                    touch_parser_on_frame_nuofei(frame_buf, expected_len);
+                    if(expected_len == 12)
+                    {
+                        process_touch_status(&single_touch.point);
+                        return 1;
+                    }
+                    else if(expected_len == 18)
+                    {
+                        process_touch_status(&double_touch.point_1);
+                        process_touch_status(&double_touch.point_2);
+                        return 2;
+                    }
                 #endif
             }
             state = STATE_IDLE;
@@ -168,7 +172,92 @@ void touch_parser_feed(uint8_t byte)
         frame_index = 0;
         break;
     }
+    return 0;
 }
+
+uint16_t Get_Touch_Gestrue(uint8_t touch_num)
+{
+    if(touch_num == 1)
+    {
+        if(single_touch.point.status == TOUCH_RELEASED 
+            && single_touch.point.status_last == TOUCH_PRESSED
+            && single_touch.point.slide_dir == SLIDE_IDLE)
+        {
+            //从按下到抬起
+            uint8_t region = Get_Region(single_touch.point);
+            return (region << 8) + 0x0000;
+        }
+        else if(single_touch.point.status == TOUCH_SLIDING)
+        {
+            if(single_touch.point.slide_dir != SLIDE_IDLE)
+            {
+                uint8_t region = Get_Region(single_touch.point);
+                single_touch.point.x_start = single_touch.point.x;
+                single_touch.point.y_start = single_touch.point.y;
+
+                switch(single_touch.point.slide_dir)
+                {
+                    case SLIDE_UP:
+                        single_touch.point.slide_dir == SLIDE_IDLE;
+                        return (region << 8) + 0x0001;
+                        break;
+                    case SLIDE_DOWN:
+                        single_touch.point.slide_dir == SLIDE_IDLE;
+                        return (region << 8) + 0x0002;
+                        break;                        
+                    case SLIDE_LEFT:
+                        single_touch.point.slide_dir == SLIDE_IDLE;
+                        return (region << 8) + 0x0001;
+                        break;
+                    case SLIDE_DOWN:
+                        single_touch.point.slide_dir == SLIDE_IDLE;
+                        return (region << 8) + 0x0001;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+        return 0;
+    }
+    else if(touch_num == 2)
+    {
+        if(double_touch.point_1.status == TOUCH_SLIDING 
+            && double_touch.point_2.status == TOUCH_SLIDING)
+        {
+            if(double_touch.point_1.slide_dir == SLIDE_UP 
+                && double_touch.point_2.slide_dir == SLIDE_UP)
+            {
+                double_touch.point_1.slide_dir = SLIDE_IDLE;
+                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                return 0xAA11;
+            }
+            else if(double_touch.point_1.slide_dir == SLIDE_DOWN 
+                && double_touch.point_2.slide_dir == SLIDE_DOWN)
+            {
+                double_touch.point_1.slide_dir = SLIDE_IDLE;
+                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                return 0xAA22;
+            }
+            else if(double_touch.point_1.slide_dir == TOUCH_LEFT 
+                && double_touch.point_2.slide_dir == TOUCH_LEFT)
+            {
+                double_touch.point_1.slide_dir = SLIDE_IDLE;
+                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                return 0xAA33;
+            }
+            else if(double_touch.point_1.slide_dir == TOUCH_RIGHT 
+                && double_touch.point_2.slide_dir == TOUCH_RIGHT)
+            {
+                double_touch.point_1.slide_dir = SLIDE_IDLE;
+                double_touch.point_2.slide_dir == SLIDE_IDLE;
+                return 0xAA44;
+            }                        
+        }
+        return 0;
+    }
+}
+
 
 
 static bool verify_checksum(uint8_t *buf, uint16_t len)
