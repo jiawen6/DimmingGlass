@@ -4,6 +4,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "tim.h"          // 为了 htim1
+#include <math.h>
 /* ============================================================================
  *  =========================== 使用方法(单行/单列调光) =======================
  *
@@ -266,3 +267,257 @@ void app_dimmer_task(void *argument)
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
+
+/**
+  * @brief  同时设置所有行与列的透光率。
+  * @note   内部实现：以 s_phase[0] 为参考相位，把未设置的通道与参考对齐；
+  *         对于 row_levels/col_levels 中大于 0 的元素，按 level->delta 偏移相位。
+  */
+void app_dimmer_set_matrix(const uint16_t row_levels[DIMMER_ROW_NUM],
+                           const uint16_t col_levels[DIMMER_COL_NUM])
+{
+    uint16_t ref, delta;
+    uint8_t i;
+
+    /* 以 X1 当前相位为参考(任意通道均可) */
+    ref = s_phase[0];
+
+    __disable_irq();
+    /* 先把所有通道与参考对齐(无压差) */
+    for (i = 0u; i < DIMMER_COL_NUM; i++) {
+        s_phase[i] = ref;
+    }
+    for (i = 0u; i < DIMMER_ROW_NUM; i++) {
+        s_phase[DIMMER_COL_NUM + i] = ref;
+    }
+
+    /* 为每一列应用偏移(若提供并且非 0) */
+    if (col_levels != NULL) {
+        for (i = 0u; i < DIMMER_COL_NUM; i++) {
+            if (col_levels[i] != 0u) {
+                delta = app_dimmer_level_to_delta(col_levels[i]);
+                s_phase[i] = (uint16_t)((ref + delta) % DIMMER_PWM_N);
+            }
+        }
+    }
+
+    /* 为每一行应用偏移(若提供并且非 0) */
+    if (row_levels != NULL) {
+        for (i = 0u; i < DIMMER_ROW_NUM; i++) {
+            if (row_levels[i] != 0u) {
+                delta = app_dimmer_level_to_delta(row_levels[i]);
+                s_phase[DIMMER_COL_NUM + i] = (uint16_t)((ref + delta) % DIMMER_PWM_N);
+            }
+        }
+    }
+
+    __enable_irq();
+}
+
+void app_dimmer_set_rows(const uint16_t row_levels[DIMMER_ROW_NUM])
+{
+    app_dimmer_set_matrix(row_levels, NULL);
+}
+
+void app_dimmer_set_cols(const uint16_t col_levels[DIMMER_COL_NUM])
+{
+    app_dimmer_set_matrix(NULL, col_levels);
+}
+
+/* ========== 统一动画任务: 可切换横/纵波浪等效果 ========== */
+static TaskHandle_t s_anim_task = NULL;
+static volatile struct {
+    app_dimmer_effect_t effect;
+    uint16_t peak;
+    uint32_t delay_ms;
+    uint8_t width;
+    uint8_t dir;
+    volatile uint8_t running;
+    float pos;
+    float step; /* 列/行的移动步进 (可为小数以平滑) */
+} s_anim_cfg;
+
+static void app_dimmer_anim_task(void *argument)
+{
+    (void)argument;
+
+    uint16_t cols[DIMMER_COL_NUM];
+    uint16_t rows[DIMMER_ROW_NUM];
+
+    /* 初始化位置根据方向和效果 */
+    if (s_anim_cfg.effect == APP_DIMMER_EFFECT_HORZ_WAVE) {
+        if (s_anim_cfg.dir == 0) s_anim_cfg.pos = -(float)s_anim_cfg.width;
+        else s_anim_cfg.pos = (float)(DIMMER_COL_NUM - 1 + s_anim_cfg.width);
+    } else if (s_anim_cfg.effect == APP_DIMMER_EFFECT_VERT_WAVE) {
+        if (s_anim_cfg.dir == 0) s_anim_cfg.pos = -(float)s_anim_cfg.width;
+        else s_anim_cfg.pos = (float)(DIMMER_ROW_NUM - 1 + s_anim_cfg.width);
+    }
+
+    while (s_anim_cfg.running) {
+        app_dimmer_effect_t effect = s_anim_cfg.effect;
+
+        if (effect == APP_DIMMER_EFFECT_HORZ_WAVE) {
+            for (uint8_t i = 0; i < DIMMER_COL_NUM; i++) {
+                float d = fabsf((float)i - s_anim_cfg.pos);
+                float v = 0.0f;
+                if ((int)s_anim_cfg.width <= 0) {
+                    v = (float)s_anim_cfg.peak;
+                } else if (d <= (float)s_anim_cfg.width) {
+                    v = (float)s_anim_cfg.peak * (1.0f - d / (float)s_anim_cfg.width);
+                }
+                if (v < 0.0f) v = 0.0f;
+                if (v > (float)DIMMER_LEVEL_MAX) v = (float)DIMMER_LEVEL_MAX;
+                cols[i] = (uint16_t)(v + 0.5f);
+            }
+            app_dimmer_set_cols(cols);
+
+            /* 更新位置 */
+            if (s_anim_cfg.dir == 0) {
+                s_anim_cfg.pos += s_anim_cfg.step;
+                if (s_anim_cfg.pos > (float)(DIMMER_COL_NUM - 1 + s_anim_cfg.width)) {
+                    s_anim_cfg.pos = -((float)s_anim_cfg.width);
+                }
+            } else {
+                s_anim_cfg.pos -= s_anim_cfg.step;
+                if (s_anim_cfg.pos < -((float)s_anim_cfg.width)) {
+                    s_anim_cfg.pos = (float)(DIMMER_COL_NUM - 1 + s_anim_cfg.width);
+                }
+            }
+        } else if (effect == APP_DIMMER_EFFECT_VERT_WAVE) {
+            for (uint8_t i = 0; i < DIMMER_ROW_NUM; i++) {
+                float d = fabsf((float)i - s_anim_cfg.pos);
+                float v = 0.0f;
+                if ((int)s_anim_cfg.width <= 0) {
+                    v = (float)s_anim_cfg.peak;
+                } else if (d <= (float)s_anim_cfg.width) {
+                    v = (float)s_anim_cfg.peak * (1.0f - d / (float)s_anim_cfg.width);
+                }
+                if (v < 0.0f) v = 0.0f;
+                if (v > (float)DIMMER_LEVEL_MAX) v = (float)DIMMER_LEVEL_MAX;
+                rows[i] = (uint16_t)(v + 0.5f);
+            }
+            app_dimmer_set_rows(rows);
+
+            /* 更新位置 */
+            if (s_anim_cfg.dir == 0) {
+                s_anim_cfg.pos += s_anim_cfg.step;
+                if (s_anim_cfg.pos > (float)(DIMMER_ROW_NUM - 1 + s_anim_cfg.width)) {
+                    s_anim_cfg.pos = -((float)s_anim_cfg.width);
+                }
+            } else {
+                s_anim_cfg.pos -= s_anim_cfg.step;
+                if (s_anim_cfg.pos < -((float)s_anim_cfg.width)) {
+                    s_anim_cfg.pos = (float)(DIMMER_ROW_NUM - 1 + s_anim_cfg.width);
+                }
+            }
+        } else {
+            /* 未知或 NONE：空转，稍作延时 */
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(s_anim_cfg.delay_ms));
+    }
+
+    /* 退出：清理句柄并删除自身 */
+    s_anim_task = NULL;
+    vTaskDelete(NULL);
+}
+
+void app_dimmer_anim_start(app_dimmer_effect_t effect, uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction)
+{
+    if (peak_level > DIMMER_LEVEL_MAX) peak_level = DIMMER_LEVEL_MAX;
+    if (width == 0u) width = 1u;
+    if (step_ms == 0u) step_ms = 50u;
+
+    /* 若任务已存在，仅更新参数并返回（实现热切换） */
+    if (s_anim_task != NULL) {
+        s_anim_cfg.effect = effect;
+        s_anim_cfg.peak = peak_level;
+        s_anim_cfg.delay_ms = step_ms;
+        s_anim_cfg.width = width;
+        s_anim_cfg.dir = (direction == 0u) ? 0u : 1u;
+        s_anim_cfg.step = 0.5f;
+        return;
+    }
+
+    s_anim_cfg.effect = effect;
+    s_anim_cfg.peak = peak_level;
+    s_anim_cfg.delay_ms = step_ms;
+    s_anim_cfg.width = width;
+    s_anim_cfg.dir = (direction == 0u) ? 0u : 1u;
+    s_anim_cfg.running = 1u;
+    s_anim_cfg.step = 0.5f;
+
+    xTaskCreate(app_dimmer_anim_task, "dmm_anim", 384, NULL, tskIDLE_PRIORITY + 2, &s_anim_task);
+}
+
+void app_dimmer_anim_change(app_dimmer_effect_t effect, uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction)
+{
+    /* 简单封装：如果任务不存在，则启动；存在则更新配置 */
+    if (s_anim_task == NULL) {
+        app_dimmer_anim_start(effect, peak_level, step_ms, width, direction);
+        return;
+    }
+    if (peak_level > DIMMER_LEVEL_MAX) peak_level = DIMMER_LEVEL_MAX;
+    if (width == 0u) width = 1u;
+    if (step_ms == 0u) step_ms = 50u;
+
+    s_anim_cfg.effect = effect;
+    s_anim_cfg.peak = peak_level;
+    s_anim_cfg.delay_ms = step_ms;
+    s_anim_cfg.width = width;
+    s_anim_cfg.dir = (direction == 0u) ? 0u : 1u;
+}
+
+void app_dimmer_anim_stop(void)
+{
+    if (s_anim_task == NULL) return;
+    s_anim_cfg.running = 0u;
+    for (int i = 0; i < 50 && s_anim_task != NULL; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+/* 向后兼容：以前的波浪接口调用统一接口（横向） */
+void app_dimmer_wave_start(uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction)
+{
+    app_dimmer_anim_start(APP_DIMMER_EFFECT_HORZ_WAVE, peak_level, step_ms, width, direction);
+}
+
+void app_dimmer_wave_stop(void)
+{
+    app_dimmer_anim_stop();
+}
+
+/*
+接口说明（简要）:
+
+app_dimmer_set_matrix(const uint16_t row_levels[DIMMER_ROW_NUM], const uint16_t col_levels[DIMMER_COL_NUM])
+同时为所有行与列设置透光率（单位与现有接口一致，0..100）。
+若参数为 NULL，视为全部通道为 0（关闭）。
+函数把未设置的通道与参考相位对齐（无压差），对提供的每个非 0 level 计算相位偏移并应用。
+行与列同时存在时，单个区域 (r,c) 的实际透光率由 phase[Xc] 与 phase[Yr] 的相位差决定。
+便捷包装：
+app_dimmer_set_rows(const uint16_t row_levels[DIMMER_ROW_NUM])
+app_dimmer_set_cols(const uint16_t col_levels[DIMMER_COL_NUM])
+使用示例:
+
+同时设置第 2、4 行为 50% 与 75%，第 3、5 列为 100% 与 25%：
+创建数组（示例）：
+uint16_t rows[DIMMER_ROW_NUM] = {0, 50, 0, 75, 0, 0, 0}; // Y1..Y7
+uint16_t cols[DIMMER_COL_NUM] = {0,0,100,0,25,0,0,0,0,0,0,0,0,0,0}; // X1..X15
+调用：
+app_dimmer_set_matrix(rows, cols);
+
+
+
+示例用法：
+
+启动横向波浪（左->右，峰值 100，40ms，半宽 4）：
+app_dimmer_anim_start(APP_DIMMER_EFFECT_HORZ_WAVE, 100, 40, 4, 0);
+切换为纵向波浪（顶->底，峰值 80，60ms，半宽 2）：
+app_dimmer_anim_change(APP_DIMMER_EFFECT_VERT_WAVE, 80, 60, 2, 0);
+停止动画：
+app_dimmer_anim_stop();
+
+
+*/

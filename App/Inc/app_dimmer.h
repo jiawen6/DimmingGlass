@@ -123,6 +123,75 @@ float app_dimmer_phase_diff_duty(uint16_t phase_a, uint16_t phase_b);
   */
 void app_dimmer_task(void *argument);
 
+/**
+  * @brief  同时设置所有行与列的透光率。
+  * @param  row_levels  指向长度为 `DIMMER_ROW_NUM` 的数组，单位 level(0~100)
+  *                     数组中每个元素对应 Y1..Y7 的目标透光率；
+  *                     若为 NULL 则视为全部为 0。
+  * @param  col_levels  指向长度为 `DIMMER_COL_NUM` 的数组，单位 level(0~100)
+  *                     数组中每个元素对应 X1..X15 的目标透光率；
+  *                     若为 NULL 则视为全部为 0。
+  *
+  * @note   同一时刻可为多个行与列分别设定透光率。函数会把未设定的通道
+  *         与参考相位对齐(即无压差 -> 关闭)。透光率按 `app_dimmer_level_to_delta`
+  *         换算为相位偏移，若同时设置行与列，则区域(r,c) 的实际透光率
+  *         由 `phase[Xc]` 与 `phase[Yr]` 的相位差决定。
+  */
+void app_dimmer_set_matrix(const uint16_t row_levels[DIMMER_ROW_NUM],
+                           const uint16_t col_levels[DIMMER_COL_NUM]);
+
+/* 方便包装：以数组方式批量设置行或列 */
+void app_dimmer_set_rows(const uint16_t row_levels[DIMMER_ROW_NUM]);
+void app_dimmer_set_cols(const uint16_t col_levels[DIMMER_COL_NUM]);
+
+/**
+  * @brief  启动列方向的连续“波浪”播放（在列 X1..X15 上移动的亮度波）。
+  * @param  peak_level  波峰透光率 (0..DIMMER_LEVEL_MAX)
+  * @param  step_ms     每次更新间隔，单位毫秒（越小越流畅/越快）
+  * @param  width       波峰影响的列半宽（列数，>=1，越大越宽）
+  * @param  direction   方向：0 = 从左到右，1 = 从右到左
+  *
+  * @note   本函数会在 FreeRTOS 下创建一个任务来周期性更新列透光率。
+  */
+void app_dimmer_wave_start(uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction);
+
+/**
+  * @brief  停止当前正在运行的波浪播放（若有）。
+  */
+void app_dimmer_wave_stop(void);
+
+/**
+  * @brief  动画类型：用于统一动画任务切换不同效果。
+  */
+typedef enum {
+    APP_DIMMER_EFFECT_NONE = 0,
+    APP_DIMMER_EFFECT_HORZ_WAVE,   /* 横向波浪（列方向） */
+    APP_DIMMER_EFFECT_VERT_WAVE,   /* 纵向波浪（行方向） */
+} app_dimmer_effect_t;
+
+/**
+  * @brief  启动通用动画任务并设置初始效果/参数。
+  * @param  effect      动画类型（见 app_dimmer_effect_t）
+  * @param  peak_level  波峰透光率 (0..DIMMER_LEVEL_MAX)
+  * @param  step_ms     每次更新间隔，单位毫秒（越小越流畅/越快）
+  * @param  width       波峰影响的半宽（>=1）
+  * @param  direction   方向含义：对横向 0=左->右,1=右->左；纵向 0=顶->底,1=底->顶
+  */
+void app_dimmer_anim_start(app_dimmer_effect_t effect, uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction);
+
+/**
+  * @brief  修改当前动画参数（若任务未运行则等同于 start）。
+  */
+void app_dimmer_anim_change(app_dimmer_effect_t effect, uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction);
+
+/**
+  * @brief  停止当前动画任务（若有）。
+  */
+void app_dimmer_anim_stop(void);
+
+
+
+
 #ifdef __cplusplus
 }
 #endif
