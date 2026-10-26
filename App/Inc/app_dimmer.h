@@ -60,6 +60,15 @@ extern "C" {
 #define DIMMER_COL_NUM    15u
 #define DIMMER_CH_NUM     (DIMMER_ROW_NUM + DIMMER_COL_NUM)   /* 22 */
 
+
+#define DIMMER_LEVEL_NUM  5u
+#define DIMMER_LEVEL_0    0u
+#define DIMMER_LEVEL_1    20u
+#define DIMMER_LEVEL_2    30u
+#define DIMMER_LEVEL_3    45u
+#define DIMMER_LEVEL_4    95u
+
+
 /* ------------------------- 软 PWM 参数 ----------------------- */
 /* 每 PWM 周期 tick 分辨率(整数个 TIM1 的 1ms tick)。需为偶数。
    PWM频率 = 定时器频率/N Hz；透光率(电平差占比)步进 = 2/N。       */
@@ -76,6 +85,8 @@ extern "C" {
   *         静态初值也等价于全关；此函数供显式/复位重新初始化使用。
   */
 void app_dimmer_init(void);
+
+void X_Y_RESET(void);
 
 /**
   * @brief  第 row 行(Yrow, 1~7) 整行透光率设为 level(0~1000)。
@@ -117,11 +128,7 @@ uint16_t app_dimmer_get_phase(uint8_t ch);
   */
 float app_dimmer_phase_diff_duty(uint16_t phase_a, uint16_t phase_b);
 
-/**
-  * @brief  FreeRTOS 任务入口(可选)。当前"整行/整列即时生效"无需常驻任务；
-  *         若后续增加分时扫描/渐变动画，可在此任务中周期调度。
-  */
-void app_dimmer_task(void *argument);
+
 
 /**
   * @brief  同时设置所有行与列的透光率。
@@ -144,52 +151,9 @@ void app_dimmer_set_matrix(const uint16_t row_levels[DIMMER_ROW_NUM],
 void app_dimmer_set_rows(const uint16_t row_levels[DIMMER_ROW_NUM]);
 void app_dimmer_set_cols(const uint16_t col_levels[DIMMER_COL_NUM]);
 
-/**
-  * @brief  启动列方向的连续“波浪”播放（在列 X1..X15 上移动的亮度波）。
-  * @param  peak_level  波峰透光率 (0..DIMMER_LEVEL_MAX)
-  * @param  step_ms     每次更新间隔，单位毫秒（越小越流畅/越快）
-  * @param  width       波峰影响的列半宽（列数，>=1，越大越宽）
-  * @param  direction   方向：0 = 从左到右，1 = 从右到左
-  *
-  * @note   本函数会在 FreeRTOS 下创建一个任务来周期性更新列透光率。
-  */
-void app_dimmer_wave_start(uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction);
-
-/**
-  * @brief  停止当前正在运行的波浪播放（若有）。
-  */
-void app_dimmer_wave_stop(void);
-
-/**
-  * @brief  动画类型：用于统一动画任务切换不同效果。
-  */
-typedef enum {
-    APP_DIMMER_EFFECT_NONE = 0,
-    APP_DIMMER_EFFECT_HORZ_WAVE,   /* 横向波浪（列方向） */
-    APP_DIMMER_EFFECT_VERT_WAVE,   /* 纵向波浪（行方向） */
-} app_dimmer_effect_t;
-
-/**
-  * @brief  启动通用动画任务并设置初始效果/参数。
-  * @param  effect      动画类型（见 app_dimmer_effect_t）
-  * @param  peak_level  波峰透光率 (0..DIMMER_LEVEL_MAX)
-  * @param  step_ms     每次更新间隔，单位毫秒（越小越流畅/越快）
-  * @param  width       波峰影响的半宽（>=1）
-  * @param  direction   方向含义：对横向 0=左->右,1=右->左；纵向 0=顶->底,1=底->顶
-  */
-void app_dimmer_anim_start(app_dimmer_effect_t effect, uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction);
-
-/**
-  * @brief  修改当前动画参数（若任务未运行则等同于 start）。
-  */
-void app_dimmer_anim_change(app_dimmer_effect_t effect, uint16_t peak_level, uint32_t step_ms, uint8_t width, uint8_t direction);
-
-/**
-  * @brief  停止当前动画任务（若有）。
-  */
-void app_dimmer_anim_stop(void);
 
 
+void app_dimmer_task(void *argument);
 
 
 #ifdef __cplusplus
